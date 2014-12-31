@@ -291,9 +291,9 @@
   (setf (collection-items panel) (stable-sort (collection-items panel) predicate :key key)))
 
 (defmethod output-panel-select-all ((panel output-panel))
-  "Select all the items."
+  "Select all the visible items."
   (when (member (output-panel-interaction panel) '(:multiple-selection :extended-selection))
-    (setf (output-panel-selection panel) (output-panel-visible-items panel))))
+    (setf (output-panel-selection panel) (coerce (output-panel-visible-items panel) 'list))))
 
 (defmethod output-panel-update-filter ((panel output-panel))
   "Something has changed outside the panel requiring a re-filter."
