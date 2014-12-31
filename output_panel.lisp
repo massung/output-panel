@@ -27,7 +27,6 @@
    #:output-panel-item-action-callback
    #:output-panel-item-select-callback
    #:output-panel-item-retract-callback
-   #:output-panel-empty-display-callback
    #:output-panel-selected-background
    #:output-panel-selected-foreground
    #:output-panel-interaction
@@ -38,7 +37,9 @@
    #:output-panel-select-all
    #:output-panel-update-filter
    #:output-panel-filter-function
-   #:output-panel-visible-items))
+   #:output-panel-sort-function
+   #:output-panel-visible-items
+   #:output-panel-empty-display-callback))
 
 (in-package :output-panel)
 
@@ -52,9 +53,6 @@
    (item-selected :initform nil :initarg :item-selected-callback :accessor output-panel-item-select-callback)
    (item-retract  :initform nil :initarg :item-retract-callback  :accessor output-panel-item-retract-callback)
 
-   ;; if the panel is empty, use this draw callback
-   (empty-display :initform nil :initarg :empty-display-callback :accessor output-panel-empty-display-callback)
-
    ;; selected item settings
    (selected-bg   :initform nil :initarg :selected-background    :accessor output-panel-selected-background)
    (selected-fg   :initform nil :initarg :selected-foreground    :accessor output-panel-selected-foreground)
@@ -66,11 +64,15 @@
    (selection     :initform nil :initarg :selected-items         :reader   output-panel-selection)
    (selection-cb  :initform nil :initarg :selection-callback     :accessor output-panel-selection-callback)
 
-   ;; filter function
+   ;; filter and sort functions
    (filter        :initform nil :initarg :filter-function        :accessor output-panel-filter-function)
+   (sort          :initform nil :initarg :sort-function          :accessor output-panel-sort-function)
    
    ;; item visibility
-   (visible-items :initform #() :initarg :visible-items          :reader   output-panel-visible-items))
+   (visible-items :initform #() :initarg :visible-items          :reader   output-panel-visible-items)
+
+   ;; if the panel is empty, use this draw callback
+   (empty-display :initform nil :initarg :empty-display-callback :accessor output-panel-empty-display-callback))
   (:default-initargs
    :draw-with-buffer t
    :vertical-scroll t
@@ -285,7 +287,7 @@
   (loop for i in (output-panel-selection panel) collect (get-collection-item panel i)))
 
 (defmethod output-panel-sort ((panel output-panel) predicate &key key)
-  "Sort the colleciton items."
+  "Sort the visible items."
   (setf (collection-items panel) (stable-sort (collection-items panel) predicate :key key)))
 
 (defmethod output-panel-select-all ((panel output-panel))
@@ -295,14 +297,21 @@
 
 (defmethod output-panel-update-filter ((panel output-panel))
   "Something has changed outside the panel requiring a re-filter."
-  (with-slots (filter)
+  (with-slots (filter sort)
       panel
-    (setf (output-panel-visible-items panel)
-          (let ((items (make-array (count-collection-items panel) :fill-pointer 0)))
-            (prog1 items
-              (dotimes (i (count-collection-items panel))
-                (when (or (null filter) (funcall filter panel (get-collection-item panel i)))
-                  (vector-push-extend i items))))))))
+
+    ;; determine all the visible items
+    (let ((items (make-array (count-collection-items panel) :fill-pointer 0)))
+      (dotimes (i (count-collection-items panel))
+        (when (or (null filter) (funcall filter panel (get-collection-item panel i)))
+          (vector-push-extend i items)))
+
+      ;; sort them if there is a sort predicate
+      (when sort
+        (setf items (stable-sort items sort)))
+    
+      ;; update the visible items
+      (setf (output-panel-visible-items panel) items))))
 
 (defmethod (setf output-panel-selected-items) (items (panel output-panel))
   "Set the selection by item instead of index."
@@ -364,7 +373,11 @@
             (:multiple-selection selection)))))
 
 (defmethod (setf output-panel-filter-function) :after (predicate (panel output-panel))
-  "The filter function predicate changed, redraw."
+  "The filter function predicate changed, update."
+  (output-panel-update-filter panel))
+
+(defmethod (setf output-panel-sort-function) :after (predicate (panel output-panel))
+  "The sort function predicate changed, update."
   (output-panel-update-filter panel))
 
 (defmethod (setf output-panel-visible-items) (indices (panel output-panel))

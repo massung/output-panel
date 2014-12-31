@@ -26,9 +26,13 @@ An output-panel is a subclass of both `output-pane` and `collection`. It also mi
 
 *:selection-callback* This is called whenever the selection changes. This is called in addition to the *:item-selected-callback*
 
-*:filter-function* This is a predicate function thats called with the panel and an item once per item. It should return `nil` if the item should be hidden. Hidden items cannot be selected.
+*:filter-function* This is a predicate function that is called with the panel and an item once per item. It should return `nil` if the item should be hidden. Hidden items cannot be selected.
+
+*:sort-function* This is a predicate function that's sent to `stable-sort` with the list of visible items whenever the filter is updated.
 
 *:visible-items* This is an array of item indices that are visible. If you want to ignore the filter-function and just determine visibility yourself, use this. It is rare to use this.
+
+*:empty-display-callback* If there are no visible items, this callback is optionally called allowing you to draw whatever you like in the panel to inform the user that there's nothing there. The only argument is the panel.
 
 ***Accessors***
 
@@ -45,7 +49,9 @@ An output-panel is a subclass of both `output-pane` and `collection`. It also mi
 *output-panel-selected-items*<br/>
 *output-panel-selection*<br/>
 *output-panel-filter-function*<br/>
-*output-panel-visible-items*
+*output-panel-sort-function*<br/>
+*output-panel-visible-items*<br/>
+*output-panel-empty-display-callback*
 
 ***Methods***
 
@@ -85,7 +91,12 @@ If you decide to set the *output-panel-visible-items* yourself, you can use any 
 	          :interaction :multiple-selection
 	          :selection-callback 'selection-changed
 	          :filter-function 'filter-item
+	          :sort-function '>
 	          :item-height 20
 	          :item-display-callback 'draw-item
 	          :items (loop for i below 100 collect i)))
+
+For fun, once the panel is open, try selecting things (click, shift-click, and command-click). Also try changing some things on the fly:
+
+	(setf (output-panel-sort-function *) '<)
 
