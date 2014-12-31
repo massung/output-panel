@@ -224,11 +224,14 @@
     ;; multiple or extended selection (ensure this item is first in the selection list)
     (otherwise (if-let (j (first (output-panel-selection panel)))
                    (setf (output-panel-selection panel)
-                         (loop with min = (min i j)
-                               with max = (max i j)
-                               for n across (output-panel-visible-items panel)
-                               when (<= min n max)
-                               collect n))
+                         (let* ((visible-items (output-panel-visible-items panel))
+
+                                ;; find where j and i are in the visible list
+                                (jp (position j visible-items))
+                                (ip (position i visible-items)))
+                           (if (< ip jp)
+                               (loop for p from ip to jp collect (aref visible-items p))
+                             (loop for p from jp to ip collect (aref visible-items p)))))
                  (select-index panel i)))))
 
 (defmethod index-at-position ((panel output-panel) x y)
