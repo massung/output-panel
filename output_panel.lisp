@@ -36,6 +36,7 @@
    #:output-panel-selected-items
    #:output-panel-sort
    #:output-panel-select-all
+   #:output-panel-update-filter
    #:output-panel-filter-function
    #:output-panel-visible-items))
 
@@ -129,7 +130,7 @@
     (gp:clear-graphics-port panel)
 
     ;; if there's nothing to draw, use an empty callback
-    (if (zerop (count-collection-items panel))
+    (if (zerop (length (output-panel-visible-items panel)))
         (when-let (callback (output-panel-empty-display-callback panel))
           (funcall callback panel))
 
