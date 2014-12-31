@@ -308,7 +308,7 @@
 
       ;; sort them if there is a sort predicate
       (when sort
-        (setf items (stable-sort items sort)))
+        (setf items (stable-sort items sort :key #'(lambda (i) (get-collection-item panel i)))))
     
       ;; update the visible items
       (setf (output-panel-visible-items panel) items))))
