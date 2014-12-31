@@ -85,7 +85,7 @@ If you decide to set the *output-panel-visible-items* yourself, you can use any 
 	
 	(defun filter-item (panel item)
 	  (oddp item))
-	
+		
 	(contain (make-instance
 	          'output-panel
 	          :interaction :multiple-selection

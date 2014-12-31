@@ -3,11 +3,11 @@
 
 (in-package :output-panel-asd)
 
-(defsystem :output_panel
-  :name "output_panel"
+(defsystem :output-panel
+  :name "output-panel"
   :version "1.0"
   :author "Jeffrey Massung"
   :license "Apache 2.0"
   :description "CAPI Output Panel Pane for LispWorks."
   :serial t
-  :components ((:file "output_panel")))
+  :components ((:file "output-panel")))

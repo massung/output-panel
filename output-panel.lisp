@@ -272,6 +272,7 @@
       
     ;; show the menu
     (when-let (menu (output-panel-item-menu panel))
+      (decf y (get-vertical-scroll-parameters panel :slug-position))
       (display-popup-menu (funcall menu (top-level-interface panel)) :owner panel :x x :y y))))
   
 (defmethod output-panel-selected-item-p ((panel output-panel) item)
