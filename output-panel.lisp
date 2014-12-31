@@ -272,8 +272,8 @@
       
     ;; show the menu
     (when-let (menu (output-panel-item-menu panel))
-      (decf y (get-vertical-scroll-parameters panel :slug-position))
-      (display-popup-menu (funcall menu (top-level-interface panel)) :owner panel :x x :y y))))
+      (let ((slug (or (get-vertical-scroll-parameters panel :slug-position) 0)))
+        (display-popup-menu (funcall menu (top-level-interface panel)) :owner panel :x x :y (- y slug))))))
   
 (defmethod output-panel-selected-item-p ((panel output-panel) item)
   "T if the item is currently selected."
