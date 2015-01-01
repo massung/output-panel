@@ -57,11 +57,11 @@ An output-panel is a subclass of both `output-pane` and `collection`. It also mi
 
 `(output-panel-selected-item-p panel item)` returns T if *item* is currently selected. Remember that *item* is tested against the currently selected items with *collection-test-function*.
 
-`(output-panel-sort panel predicate &key key)` sorts all the items in the collection with *stable-sort*. The current selection is maintained.
-
 `(output-panel-select-all panel)` selects all the items in the collection if the *:interaction* is `:multiple-selection`. Otherwise no change to the selection is made.
 
-`(output-panel-update-filter panel)` tells the panel that something outside the panel has changed and each item needs to be re-filtered. This is called automatically if the filter function changes or if the collection items change. Items that no longer visible are removed from the current selection.
+`(output-panel-retract-all panel)` is just a helper for setting the selection to `nil`.
+
+`(output-panel-update-filter panel)` tells the panel that something outside the panel has changed and each item needs to be re-filtered and sorted. This is called automatically if the filter or sort functions change or if the items in the collection change.
 
 ***Notes***
 
@@ -69,7 +69,7 @@ Unlike the `choice` class, when getting the current selection a list will *alway
 
 The `output-panel-selection` accessor returns item indices, while `output-panel-selected-items` returns the actual items. Both are `setf`-able. But, when setting the selected items, `search-for-item` will be used to find the index, which uses the `collection-test-function`. If you have multiple items in then collection that test equal, the first one will be selected.
 
-When your item is being drawn, its draw area is transformed and masked by the panel. This means that (0,0) is the upper-left coordinate of the item's visible area (and not the upper-left of the panel). It also means that if you draw outside the visible area of the item it will be clipped.
+When your item is being drawn, its draw area is transformed and masked by the panel. This means that (0,0) is the upper-left coordinate of the *item's* visible area (and not the upper-left of the panel). It also means that if you draw outside the visible area of the item it will be clipped.
 
 If you decide to set the *output-panel-visible-items* yourself, you can use any sequence of indices, but a vector is what will always be stored.
 

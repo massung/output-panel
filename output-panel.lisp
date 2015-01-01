@@ -33,8 +33,8 @@
    #:output-panel-selection
    #:output-panel-selected-item-p
    #:output-panel-selected-items
-   #:output-panel-sort
    #:output-panel-select-all
+   #:output-panel-retract-all
    #:output-panel-update-filter
    #:output-panel-filter-function
    #:output-panel-sort-function
@@ -290,14 +290,14 @@
   "Return the list of selected items from the selection set."
   (loop for i in (output-panel-selection panel) collect (get-collection-item panel i)))
 
-(defmethod output-panel-sort ((panel output-panel) predicate &key key)
-  "Sort the visible items."
-  (setf (collection-items panel) (stable-sort (collection-items panel) predicate :key key)))
-
 (defmethod output-panel-select-all ((panel output-panel))
   "Select all the visible items."
   (when (member (output-panel-interaction panel) '(:multiple-selection :extended-selection))
     (setf (output-panel-selection panel) (coerce (output-panel-visible-items panel) 'list))))
+
+(defmethod output-panel-retract-all ((panel output-panel))
+  "Deselect all items."
+  (setf (output-panel-selection panel) nil))
 
 (defmethod output-panel-update-filter ((panel output-panel))
   "Something has changed outside the panel requiring a re-filter."
