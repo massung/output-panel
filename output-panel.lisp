@@ -41,6 +41,7 @@
    #:output-panel-visible-items
    #:output-panel-paginate-p
    #:output-panel-page
+   #:output-panel-pages
    #:output-panel-items-per-page
    #:output-panel-empty-display-callback))
 
@@ -335,6 +336,14 @@
   "Deselect all items."
   (setf (output-panel-selection panel) nil))
 
+(defmethod output-panel-pages ((panel output-panel))
+  "Returns the number of pages required to show all visible items."
+  (with-slots (paginate items-per-page visible-items)
+      panel
+    (if (null paginate)
+        1
+      (nth-value 0 (ceiling (/ (length visible-items) items-per-page))))))
+
 (defmethod output-panel-update-filter ((panel output-panel))
   "Something has changed outside the panel requiring a re-filter."
   (with-slots (filter sort)
@@ -431,11 +440,9 @@
 
 (defmethod (setf output-panel-page) :after (page (panel output-panel))
   "Set the current page."
-  (with-slots (visible-items items-per-page)
-      panel
-    (let ((n (1- (ceiling (/ (length visible-items) items-per-page)))))
-      (cond ((< page 0) (setf (slot-value panel 'page) 0))
-            ((> page n) (setf (slot-value panel 'page) n)))))
+  (let ((n (1- (output-panel-pages panel))))
+    (cond ((< page 0) (setf (slot-value panel 'page) 0))
+          ((> page n) (setf (slot-value panel 'page) n))))
 
   ;; ensure that the currently selected items are visible
   (validate-selection panel)
