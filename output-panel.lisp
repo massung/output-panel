@@ -431,9 +431,11 @@
 
 (defmethod (setf output-panel-page) :after (page (panel output-panel))
   "Set the current page."
-  (let ((n (1- (ceiling (/ (length (output-panel-visible-items panel)) (output-panel-items-per-page panel))))))
-    (cond ((< page 0) (setf (slot-value panel 'page) 0))
-          ((> page n) (setf (slot-value panel 'page) n))))
+  (with-slots (visible-items items-per-page)
+      panel
+    (let ((n (1- (ceiling (/ (length visible-items) items-per-page)))))
+      (cond ((< page 0) (setf (slot-value panel 'page) 0))
+            ((> page n) (setf (slot-value panel 'page) n)))))
 
   ;; ensure that the currently selected items are visible
   (validate-selection panel)
