@@ -39,40 +39,48 @@
    #:output-panel-filter-function
    #:output-panel-sort-function
    #:output-panel-visible-items
+   #:output-panel-paginate-p
+   #:output-panel-page
+   #:output-panel-items-per-page
    #:output-panel-empty-display-callback))
 
 (in-package :output-panel)
 
 (defclass output-panel (output-pane collection)
-  ((item-height   :initform 20  :initarg :item-height            :accessor output-panel-item-height)
-   (item-menu     :initform nil :initarg :item-menu              :accessor output-panel-item-menu)
+  ((item-height    :initform 20  :initarg :item-height            :accessor output-panel-item-height)
+   (item-menu      :initform nil :initarg :item-menu              :accessor output-panel-item-menu)
    
    ;; item interaction callbacks
-   (item-display  :initform nil :initarg :item-display-callback  :accessor output-panel-item-display-callback)
-   (item-action   :initform nil :initarg :item-action-callback   :accessor output-panel-item-action-callback)
-   (item-selected :initform nil :initarg :item-selected-callback :accessor output-panel-item-select-callback)
-   (item-retract  :initform nil :initarg :item-retract-callback  :accessor output-panel-item-retract-callback)
+   (item-display   :initform nil :initarg :item-display-callback  :accessor output-panel-item-display-callback)
+   (item-action    :initform nil :initarg :item-action-callback   :accessor output-panel-item-action-callback)
+   (item-selected  :initform nil :initarg :item-selected-callback :accessor output-panel-item-select-callback)
+   (item-retract   :initform nil :initarg :item-retract-callback  :accessor output-panel-item-retract-callback)
 
    ;; selected item settings
-   (selected-bg   :initform nil :initarg :selected-background    :accessor output-panel-selected-background)
-   (selected-fg   :initform nil :initarg :selected-foreground    :accessor output-panel-selected-foreground)
+   (selected-bg    :initform nil :initarg :selected-background    :accessor output-panel-selected-background)
+   (selected-fg    :initform nil :initarg :selected-foreground    :accessor output-panel-selected-foreground)
 
    ;; selection styles nil, :no-selection, :single-selection, or :multiple-selection
-   (interaction   :initform nil :initarg :interaction            :accessor output-panel-interaction)
+   (interaction    :initform nil :initarg :interaction            :accessor output-panel-interaction)
 
    ;; currently selected indices and callback
-   (selection     :initform nil :initarg :selected-items         :reader   output-panel-selection)
-   (selection-cb  :initform nil :initarg :selection-callback     :accessor output-panel-selection-callback)
+   (selection      :initform nil :initarg :selected-items         :reader   output-panel-selection)
+   (selection-cb   :initform nil :initarg :selection-callback     :accessor output-panel-selection-callback)
 
    ;; filter and sort functions
-   (filter        :initform nil :initarg :filter-function        :accessor output-panel-filter-function)
-   (sort          :initform nil :initarg :sort-function          :accessor output-panel-sort-function)
+   (filter         :initform nil :initarg :filter-function        :accessor output-panel-filter-function)
+   (sort           :initform nil :initarg :sort-function          :accessor output-panel-sort-function)
    
    ;; item visibility
-   (visible-items :initform #() :initarg :visible-items          :reader   output-panel-visible-items)
+   (visible-items  :initform #() :initarg :visible-items          :reader   output-panel-visible-items)
+
+   ;; pagination options
+   (paginate       :initform nil :initarg :paginate               :accessor output-panel-paginate-p)
+   (page           :initform 0   :initarg :page                   :accessor output-panel-page)
+   (items-per-page :initform 100 :initarg :items-per-page         :accessor output-panel-items-per-page)
 
    ;; if the panel is empty, use this draw callback
-   (empty-display :initform nil :initarg :empty-display-callback :accessor output-panel-empty-display-callback))
+   (empty-display  :initform nil :initarg :empty-display-callback :accessor output-panel-empty-display-callback))
   (:default-initargs
    :draw-with-buffer t
    :vertical-scroll t
@@ -101,16 +109,23 @@
 
 (defmethod resize-scroll ((panel output-panel))
   "Calculate the new scroll height from the collection size."
-  (let ((h (* (output-panel-item-height panel) (length (output-panel-visible-items panel)))))
+  (with-slots (item-height visible-items paginate page items-per-page)
+      panel
+    (let* ((n (length visible-items))
 
-    ;; change the maximum range of the panel
-    (set-vertical-scroll-parameters panel :max-range h)
+           ;; calculate the maximum height of the page
+           (h (* item-height (if (null paginate)
+                                 n
+                               (min items-per-page (- n (* items-per-page page)))))))
 
-    ;; if everything fits just fine, set the slug back to 0
-    (if (<= h (or (simple-pane-visible-height panel) 0))
-        (set-vertical-scroll-parameters panel :slug-position 0)
-      (unless (<= (or (get-vertical-scroll-parameters panel :slug-position) 0) h)
-        (set-vertical-scroll-parameters panel :slug-position h)))))
+      ;; change the maximum range of the panel
+      (set-vertical-scroll-parameters panel :max-range h)
+      
+      ;; if everything fits just fine, set the slug back to 0
+      (if (<= h (or (simple-pane-visible-height panel) 0))
+          (set-vertical-scroll-parameters panel :slug-position 0)
+        (unless (<= (or (get-vertical-scroll-parameters panel :slug-position) 0) h)
+          (set-vertical-scroll-parameters panel :slug-position h))))))
 
 (defmethod resize-output-panel ((panel output-panel) x y w h)
   "Recalculate the scroll size and redraw."
@@ -148,7 +163,8 @@
             with sel-bg = (or (output-panel-selected-background panel) :color_highlight)
             with sel-fg = (or (output-panel-selected-foreground panel) :color_highlighttext)
 
-            with items = (output-panel-visible-items panel)
+            ;; get all the visible items and the maximum to display
+            with items = (paginated-view panel)
             with n = (length items)
             
             ;; loop over each item
@@ -196,6 +212,15 @@
     ;; redraw since the slug position changed
     (gp:invalidate-rectangle panel)))
 
+(defmethod paginated-view ((panel output-panel))
+  "Returns the current subset of visible items for the current page."
+  (with-slots (paginate items-per-page page visible-items)
+      panel
+    (if (not paginate)
+        visible-items
+      (let ((start (* page items-per-page)))
+        (subseq visible-items start (min (+ start items-per-page) (length visible-items)))))))
+
 (defmethod select-index ((panel output-panel) i &key single-selection-p)
   "Add or remove an item from the current selection set."
   (setf (output-panel-selection panel)
@@ -236,10 +261,15 @@
 
 (defmethod index-at-position ((panel output-panel) x y)
   "Return the item clicked at a given position."
-  (with-geometry panel
-    (when (and (< 0 x %width%)
-               (< 0 y %scroll-height%))
-      (aref (output-panel-visible-items panel) (truncate y (output-panel-item-height panel))))))
+  (with-slots (paginate page items-per-page visible-items item-height)
+      panel
+    (with-geometry panel
+      (when (and (< 0 x %width%)
+                 (< 0 y %scroll-height%))
+        (let ((page-offset (if (null paginate)
+                               0
+                             (* page items-per-page))))
+          (aref visible-items (+ page-offset (truncate y item-height))))))))
 
 (defmethod click-item ((panel output-panel) x y)
   "Select an item."
@@ -274,6 +304,12 @@
     (when-let (menu (output-panel-item-menu panel))
       (let ((slug (or (get-vertical-scroll-parameters panel :slug-position) 0)))
         (display-popup-menu (funcall menu (top-level-interface panel)) :owner panel :x x :y (- y slug))))))
+
+(defmethod validate-selection ((panel output-panel))
+  "Remove selected items that are no longer visible due to pagination."
+  (let ((items (paginated-view panel)))
+    (setf (output-panel-selection panel)
+          (remove-if-not #'(lambda (i) (find i items)) (output-panel-selection panel)))))
   
 (defmethod output-panel-selected-item-p ((panel output-panel) item)
   "T if the item is currently selected."
@@ -315,7 +351,10 @@
         (setf items (stable-sort items sort :key #'(lambda (i) (get-collection-item panel i)))))
     
       ;; update the visible items
-      (setf (output-panel-visible-items panel) items))))
+      (setf (output-panel-visible-items panel) items)))
+
+  ;; ensure that the currently selected items are visible
+  (validate-selection panel))
 
 (defmethod (setf output-panel-selected-items) (items (panel output-panel))
   "Set the selection by item instead of index."
@@ -384,6 +423,31 @@
   "The sort function predicate changed, update."
   (output-panel-update-filter panel))
 
+(defmethod (setf output-panel-paginate-p) :after (flag (panel output-panel))
+  "Toggle pagination on/off."
+  (validate-selection panel)
+  (resize-scroll panel)
+  (gp:invalidate-rectangle panel))
+
+(defmethod (setf output-panel-page) :after (page (panel output-panel))
+  "Set the current page."
+  (let ((n (1- (ceiling (/ (length (output-panel-visible-items panel)) (output-panel-items-per-page panel))))))
+    (cond ((< page 0) (setf (slot-value panel 'page) 0))
+          ((> page n) (setf (slot-value panel 'page) n))))
+
+  ;; ensure that the currently selected items are visible
+  (validate-selection panel)
+
+  ;; update the scroll bar (might be switching to/from last page)
+  (resize-scroll panel)
+
+  ;; changing the page resets the selection
+  (output-panel-retract-all panel))
+
+(defmethod (setf output-panel-items-per-page) :after (n (panel output-panel))
+  "Set the number of visible items per page. Resets the page back to 0."
+  (setf (output-panel-page panel) 0))
+
 (defmethod (setf output-panel-visible-items) (indices (panel output-panel))
   "Change the array of visible items."
   (let ((n (count-collection-items panel)))
@@ -392,9 +456,8 @@
     (setf (slot-value panel 'visible-items)
           (coerce (remove-if-not #'(lambda (i) (< -1 i n)) indices) 'vector)))
 
+  ;; ensure that the currently selected items are visible
+  (validate-selection panel)
+
   ;; update the scroll bar
-  (resize-scroll panel)
-  
-  ;; change the selection - remove indices not visible
-  (setf (output-panel-selection panel)
-        (remove-if-not #'(lambda (i) (find i indices)) (output-panel-selection panel))))
+  (resize-scroll panel))
