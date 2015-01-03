@@ -365,6 +365,11 @@
   ;; ensure that the currently selected items are visible
   (validate-selection panel))
 
+(defmethod (setf output-panel-item-height) :after (height (panel output-panel))
+  "Redraw after changing the height of the items."
+  (resize-scroll panel)
+  (gp:invalidate-rectangle panel))
+
 (defmethod (setf output-panel-selected-items) (items (panel output-panel))
   "Set the selection by item instead of index."
   (setf (output-panel-selection panel)
