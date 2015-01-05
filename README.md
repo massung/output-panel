@@ -1,8 +1,12 @@
 # CAPI Output Panel for LispWorks
 
-An output-panel is a subclass of both `output-pane` and `collection`. It also mimics the behavior of `choice`. You can think of an `output-panel` as a very efficient version of a `column-layout` filled with `output-pane` elements and can select them. It takes care of all drawing, scrolling, input  and selection (`:no-selection`, `:single-selection`, and `:multiple-selection`). 
+An output-panel is a subclass of both `output-pane` and `collection`. It also mimics the behavior of `choice`. You can think of an `output-panel` as a very efficient version of a `column-layout` filled with `output-pane` elements and can select them.
+
+It takes care of all drawing, scrolling, input  and selection (`:no-selection`, `:single-selection`, and `:multiple-selection`). 
 
 *Treat it like you would a `list-panel`, but where you can draw anything you want for each item.*
+
+In addition to being a general list of things, `output-panel` can automatically filter, sort, and paginate!
 
 ***Initargs***
 
@@ -32,6 +36,12 @@ An output-panel is a subclass of both `output-pane` and `collection`. It also mi
 
 *:visible-items* This is an array of item indices that are visible. If you want to ignore the filter-function and just determine visibility yourself, use this. It is rare to use this.
 
+*:paginate* Set this to `T` if you'd like the items to be paginated. If it's `nil` then all items are visible.
+
+*:page* This is the current page (0-based) of items visible. This parameter is ignored if *:paginate* is `nil`.
+
+*:items-per-page* This is the number of items visible per page. This parameter is ignored if *:paginate* is `nil`. Changing this value after the panel is visible will always reset the current page back to 0.
+
 *:empty-display-callback* If there are no visible items, this callback is optionally called allowing you to draw whatever you like in the panel to inform the user that there's nothing there. The only argument is the panel.
 
 ***Accessors***
@@ -51,6 +61,9 @@ An output-panel is a subclass of both `output-pane` and `collection`. It also mi
 *output-panel-filter-function*<br/>
 *output-panel-sort-function*<br/>
 *output-panel-visible-items*<br/>
+*output-panel-paginate-p*<br/>
+*output-panel-page*<br/>
+*output-panel-items-per-page*<br/>
 *output-panel-empty-display-callback*
 
 ***Methods***
@@ -70,6 +83,8 @@ Unlike the `choice` class, when getting the current selection a list will *alway
 The `output-panel-selection` accessor returns item indices, while `output-panel-selected-items` returns the actual items. Both are `setf`-able. But, when setting the selected items, `search-for-item` will be used to find the index, which uses the `collection-test-function`. If you have multiple items in then collection that test equal, the first one will be selected.
 
 When your item is being drawn, its draw area is transformed and masked by the panel. This means that (0,0) is the upper-left coordinate of the *item's* visible area (and not the upper-left of the panel). It also means that if you draw outside the visible area of the item it will be clipped.
+
+A paginated `output-panel` will never keep selections across pages. If you change the *items-per-page* or *page* such that some (or all) of the current selection is no longer visible, those items will be removed from the selection.
 
 If you decide to set the *output-panel-visible-items* yourself, you can use any sequence of indices, but a vector is what will always be stored.
 
@@ -92,11 +107,17 @@ If you decide to set the *output-panel-visible-items* yourself, you can use any 
 	          :selection-callback 'selection-changed
 	          :filter-function 'filter-item
 	          :sort-function '>
+	          :paginate t
+	          :items-per-page 40
 	          :item-height 20
 	          :item-display-callback 'draw-item
 	          :items (loop for i below 100 collect i)))
 
 For fun, once the panel is open, try selecting things (click, shift-click, and command-click). Also try changing some things on the fly:
 
-	(setf (output-panel-sort-function *) '<)
+	(setf (output-panel-sort-function panel) '<)
+	(setf (output-panel-page panel) 2)
+	(setf (output-panel-items-per-page panel) 15)
+	
+
 
