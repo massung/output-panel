@@ -31,10 +31,17 @@
    #:output-panel-selected-foreground
    #:output-panel-interaction
    #:output-panel-selection
+   #:output-panel-selection-callback
    #:output-panel-selected-item-p
    #:output-panel-selected-items
+   #:output-panel-selected-item
+   #:output-panel-cursor
    #:output-panel-select-all
    #:output-panel-retract-all
+   #:output-panel-navigate-next
+   #:output-panel-navigate-previous
+   #:output-panel-navigate-first
+   #:output-panel-navigate-last
    #:output-panel-update-filter
    #:output-panel-filter-function
    #:output-panel-sort-function
@@ -43,7 +50,8 @@
    #:output-panel-page
    #:output-panel-pages
    #:output-panel-items-per-page
-   #:output-panel-empty-display-callback))
+   #:output-panel-empty-display-callback
+   #:output-panel-gesture-callback))
 
 (in-package :output-panel)
 
@@ -81,7 +89,10 @@
    (items-per-page :initform 100 :initarg :items-per-page         :accessor output-panel-items-per-page)
 
    ;; if the panel is empty, use this draw callback
-   (empty-display  :initform nil :initarg :empty-display-callback :accessor output-panel-empty-display-callback))
+   (empty-display  :initform nil :initarg :empty-display-callback :accessor output-panel-empty-display-callback)
+
+   ;; gestures use this callback and get the current item
+   (gesture-cb     :initform nil :initarg :gesture-callback       :accessor output-panel-gesture-callback))
   (:default-initargs
    :draw-with-buffer t
    :vertical-scroll t
@@ -92,7 +103,8 @@
    :resize-callback 'resize-output-panel
    :display-callback 'display-output-panel
    :scroll-callback 'scroll-output-panel
-   :input-model '(((:button-1 :press) click-item)
+   :input-model '((:gesture-spec handle-gesture)
+                  ((:button-1 :press) click-item)
                   ((:button-1 :second-press) double-click-item)
                   ((:button-1 :press :shift) shift-click-item)
                   ((:button-1 :press #+cocoa :hyper #+mswindows :control) hyper-click-item)
@@ -222,22 +234,42 @@
       (let ((start (* page items-per-page)))
         (subseq visible-items start (min (+ start items-per-page) (length visible-items)))))))
 
-(defmethod select-index ((panel output-panel) i &key single-selection-p)
+(defmethod ensure-index-visible ((panel output-panel) i)
+  "Ensure that the last item selected is visible."
+  (with-slots (visible-items item-height)
+      panel
+    (when-let (pos (position i visible-items))
+      (let* ((y1 (get-vertical-scroll-parameters panel :slug-position))
+
+             ;; bottom visible y
+             (y2 (- (+ y1 (simple-pane-visible-height panel)) item-height))
+
+             ;; this is the y that needs to be visible
+             (p (* pos item-height)))
+        (cond ((< p y1) ; scroll up
+               (set-vertical-scroll-parameters panel :slug-position p))
+              ((> p y2) ; scroll down
+               (set-vertical-scroll-parameters panel :slug-position (+ y1 (- p y2)))))))))
+
+(defmethod select-index ((panel output-panel) i &key adjoin)
   "Add or remove an item from the current selection set."
   (setf (output-panel-selection panel)
         (cond ((member (output-panel-interaction panel) '(:no-selection nil))
                ())
               
               ;; single selection or forced single selection
-              ((or single-selection-p (eq (output-panel-interaction panel) :single-selection))
+              ((or (null adjoin) (eq (output-panel-interaction panel) :single-selection))
                (list i))
               
               ;; item already selected?
-              ((member i (output-panel-selection panel))
+              ((and adjoin (member i (output-panel-selection panel)))
                (remove i (output-panel-selection panel)))
               
               ;; multiple or extended selection
-              (t (cons i (output-panel-selection panel))))))
+              (t (adjoin i (output-panel-selection panel)))))
+
+  ;; make sure it's visible
+  (ensure-index-visible panel i))
 
 (defmethod extend-index-selection ((panel output-panel) i)
   "Select a range of items from the last selected item to this one."
@@ -245,7 +277,7 @@
     ((:no-selection nil))
     
     ;; don't extend, just select this item
-    (:single-selection (setf (output-panel-selection panel) (list i)))
+    (:single-selection (select-index panel i :single-selection-p t))
     
     ;; multiple or extended selection (ensure this item is first in the selection list)
     (otherwise (if-let (j (first (output-panel-selection panel)))
@@ -256,9 +288,12 @@
                                 (jp (position j visible-items))
                                 (ip (position i visible-items)))
                            (if (< ip jp)
-                               (loop for p from ip to jp collect (aref visible-items p))
+                               (loop for p from jp downto ip collect (aref visible-items p))
                              (loop for p from jp to ip collect (aref visible-items p)))))
-                 (select-index panel i)))))
+                 (select-index panel i))))
+
+  ;; make sure it's visible
+  (ensure-index-visible panel i))
 
 (defmethod index-at-position ((panel output-panel) x y)
   "Return the item clicked at a given position."
@@ -272,15 +307,30 @@
                              (* page items-per-page))))
           (aref visible-items (+ page-offset (truncate y item-height))))))))
 
+(defmethod handle-gesture ((panel output-panel) x y gspec)
+  "Allow the instance to handle all gestures."
+  (when t
+    (let ((shift-p (plusp (logand sys:gesture-spec-shift-bit (sys:gesture-spec-modifiers gspec)))))
+      (print (sys:gesture-spec-to-character gspec))
+      (case (sys:gesture-spec-to-character gspec)
+        (#\up   (return-from handle-gesture (output-panel-navigate-previous panel shift-p)))
+        (#\down (return-from handle-gesture (output-panel-navigate-next panel shift-p)))
+        (#\home (return-from handle-gesture (output-panel-navigate-first panel shift-p)))
+        (#\end  (return-from handle-gesture (output-panel-navigate-last panel shift-p))))))
+
+  ;; allow the callback to handle the gesture
+  (when-let (callback (output-panel-gesture-callback panel))
+    (funcall callback panel gspec)))
+
 (defmethod click-item ((panel output-panel) x y)
   "Select an item."
   (when-let (i (index-at-position panel x y))
-    (select-index panel i :single-selection-p t)))
+    (select-index panel i)))
 
 (defmethod double-click-item ((panel output-panel) x y)
   "Select and perform an action on a given item."
   (when-let (i (index-at-position panel x y))
-    (select-index panel i :single-selection-p t)
+    (select-index panel i)
     
     ;; let the item do something since it was acted on
     (apply-callback panel 'item-action (get-collection-item panel i))))
@@ -293,13 +343,13 @@
 (defmethod hyper-click-item ((panel output-panel) x y)
   "Toggle the selection status of an item."
   (when-let (i (index-at-position panel x y))
-    (select-index panel i)))
+    (select-index panel i :adjoin t)))
 
 (defmethod post-menu-item ((panel output-panel) x y)
   "Display an alternative action menu for the current selection."
   (when-let (i (index-at-position panel x y))
     (unless (member i (output-panel-selection panel))
-      (select-index panel i :single-selection-p t))
+      (select-index panel i))
       
     ;; show the menu
     (when-let (menu (output-panel-item-menu panel))
@@ -311,6 +361,48 @@
   (let ((items (paginated-view panel)))
     (setf (output-panel-selection panel)
           (remove-if-not #'(lambda (i) (find i items)) (output-panel-selection panel)))))
+
+(defmethod navigate-to ((panel output-panel) i extend-p)
+  "Move the cursor to an index, optionally extending the selection (which doesn't advance the cursor)."
+  (if extend-p
+      (extend-index-selection panel i)
+    (select-index panel i)))
+
+(defmethod output-panel-navigate-next ((panel output-panel) &optional extend-p)
+  "Move to the next item, optionally extending the selection."
+  (with-slots (selection visible-items)
+      panel
+    (if-let (i (first selection))
+        (let ((n (1+ (position i visible-items))))
+          (when (< n (length visible-items))
+            (select-index panel (aref visible-items n))))
+      (output-panel-navigate-first panel))))
+
+(defmethod output-panel-navigate-previous ((panel output-panel) &optional extend-p)
+  "Move to the previous item, optionally extending the selection."
+  (with-slots (selection visible-items)
+      panel
+    (when-let (i (first selection))
+      (let ((n (1- (position i visible-items))))
+        (when (>= n 0)
+          (select-index panel (aref visible-items n)))))))
+
+(defmethod output-panel-navigate-first ((panel output-panel) &optional extend-p)
+  "Select the first headline."
+  (with-slots (visible-items)
+      panel
+    (when (plusp (length visible-items))
+      (let ((i (aref visible-items 0)))
+        (select-index panel i)))))
+
+(defmethod output-panel-navigate-last ((panel output-panel) &optional extend-p)
+  "Select the first headline that isn't marked as read (in reverse)."
+  (with-slots (visible-items)
+      panel
+    (let ((n (1- (length visible-items))))
+      (when (>= n 0)
+        (let ((i (aref visible-items n)))
+          (select-index panel i))))))
   
 (defmethod output-panel-selected-item-p ((panel output-panel) item)
   "T if the item is currently selected."
@@ -322,6 +414,11 @@
 
         ;; success if the items match
         when (funcall test item selected-item) return t))
+
+(defmethod output-panel-selected-item ((panel output-panel))
+  "Returns the most recently selected item and a boolean indicating whether there is one."
+  (when-let (selection (output-panel-selection panel))
+    (values (get-collection-item panel (first selection)) t)))
 
 (defmethod output-panel-selected-items ((panel output-panel))
   "Return the list of selected items from the selection set."
