@@ -34,8 +34,8 @@
    #:output-panel-selection-callback
    #:output-panel-selected-item-p
    #:output-panel-selected-items
-   #:output-panel-selected-item
-   #:output-panel-cursor
+   #:output-panel-focus-item
+   #:output-panel-origin-item
    #:output-panel-select-all
    #:output-panel-retract-all
    #:output-panel-navigate-next
@@ -75,6 +75,10 @@
    ;; currently selected indices and callback
    (selection      :initform nil :initarg :selected-items         :reader   output-panel-selection)
    (selection-cb   :initform nil :initarg :selection-callback     :accessor output-panel-selection-callback)
+
+   ;; the current focus and origin items
+   (focus          :initform nil :initarg :focus                  :accessor output-panel-focus)
+   (origin         :initform nil :initarg :origin                 :accessor output-panel-origin)
 
    ;; filter and sort functions
    (filter         :initform nil :initarg :filter-function        :accessor output-panel-filter-function)
@@ -234,7 +238,7 @@
       (let ((start (* page items-per-page)))
         (subseq visible-items start (min (+ start items-per-page) (length visible-items)))))))
 
-(defmethod ensure-index-visible ((panel output-panel) i)
+(defmethod ensure-index-visible ((panel output-panel) &optional (i (output-panel-focus panel)))
   "Ensure that the last item selected is visible."
   (with-slots (visible-items item-height)
       panel
@@ -251,7 +255,7 @@
               ((> p y2) ; scroll down
                (set-vertical-scroll-parameters panel :slug-position (+ y1 (- p y2)))))))))
 
-(defmethod select-index ((panel output-panel) i &key adjoin)
+(defmethod select-index ((panel output-panel) i &key adjoin (focus t) (origin t))
   "Add or remove an item from the current selection set."
   (setf (output-panel-selection panel)
         (cond ((member (output-panel-interaction panel) '(:no-selection nil))
@@ -268,29 +272,37 @@
               ;; multiple or extended selection
               (t (adjoin i (output-panel-selection panel)))))
 
+  ;; update the focus and origin
+  (when focus (setf (output-panel-focus panel) i))
+  (when origin (setf (output-panel-origin panel) i))
+
   ;; make sure it's visible
   (ensure-index-visible panel i))
 
-(defmethod extend-index-selection ((panel output-panel) i)
+(defmethod extend-index-selection ((panel output-panel) i &key (focus t))
   "Select a range of items from the last selected item to this one."
   (case (output-panel-interaction panel)
     ((:no-selection nil))
     
     ;; don't extend, just select this item
-    (:single-selection (select-index panel i :single-selection-p t))
+    (:single-selection (select-index panel i :focus focus))
     
     ;; multiple or extended selection (ensure this item is first in the selection list)
-    (otherwise (if-let (j (first (output-panel-selection panel)))
-                   (setf (output-panel-selection panel)
-                         (let* ((visible-items (output-panel-visible-items panel))
+    (otherwise (if-let (j (output-panel-origin panel))
+                   (progn
+                     (setf (output-panel-selection panel)
+                           (let* ((visible-items (output-panel-visible-items panel))
+                                  
+                                  ;; find where j and i are in the visible list
+                                  (jp (position j visible-items))
+                                  (ip (position i visible-items)))
+                             (if (< ip jp)
+                                 (loop for p from jp downto ip collect (aref visible-items p))
+                               (loop for p from jp to ip collect (aref visible-items p)))))
 
-                                ;; find where j and i are in the visible list
-                                (jp (position j visible-items))
-                                (ip (position i visible-items)))
-                           (if (< ip jp)
-                               (loop for p from jp downto ip collect (aref visible-items p))
-                             (loop for p from jp to ip collect (aref visible-items p)))))
-                 (select-index panel i))))
+                     ;; update the focus item
+                     (when focus (setf (output-panel-focus panel) i)))
+                 (select-index panel i :focus focus))))
 
   ;; make sure it's visible
   (ensure-index-visible panel i))
@@ -311,12 +323,11 @@
   "Allow the instance to handle all gestures."
   (when t
     (let ((shift-p (plusp (logand sys:gesture-spec-shift-bit (sys:gesture-spec-modifiers gspec)))))
-      (print (sys:gesture-spec-to-character gspec))
-      (case (sys:gesture-spec-to-character gspec)
-        (#\up   (return-from handle-gesture (output-panel-navigate-previous panel shift-p)))
-        (#\down (return-from handle-gesture (output-panel-navigate-next panel shift-p)))
-        (#\home (return-from handle-gesture (output-panel-navigate-first panel shift-p)))
-        (#\end  (return-from handle-gesture (output-panel-navigate-last panel shift-p))))))
+      (case (sys:gesture-spec-data gspec)
+        (:up   (return-from handle-gesture (output-panel-navigate-previous panel shift-p)))
+        (:down (return-from handle-gesture (output-panel-navigate-next panel shift-p)))
+        (:home (return-from handle-gesture (output-panel-navigate-first panel shift-p)))
+        (:end  (return-from handle-gesture (output-panel-navigate-last panel shift-p))))))
 
   ;; allow the callback to handle the gesture
   (when-let (callback (output-panel-gesture-callback panel))
@@ -370,30 +381,29 @@
 
 (defmethod output-panel-navigate-next ((panel output-panel) &optional extend-p)
   "Move to the next item, optionally extending the selection."
-  (with-slots (selection visible-items)
+  (with-slots (visible-items)
       panel
-    (if-let (i (first selection))
+    (if-let (i (output-panel-focus panel))
         (let ((n (1+ (position i visible-items))))
           (when (< n (length visible-items))
-            (select-index panel (aref visible-items n))))
+            (navigate-to panel (aref visible-items n) extend-p)))
       (output-panel-navigate-first panel))))
 
 (defmethod output-panel-navigate-previous ((panel output-panel) &optional extend-p)
   "Move to the previous item, optionally extending the selection."
-  (with-slots (selection visible-items)
+  (with-slots (visible-items)
       panel
-    (when-let (i (first selection))
+    (when-let (i (output-panel-focus panel))
       (let ((n (1- (position i visible-items))))
         (when (>= n 0)
-          (select-index panel (aref visible-items n)))))))
+          (navigate-to panel (aref visible-items n) extend-p))))))
 
 (defmethod output-panel-navigate-first ((panel output-panel) &optional extend-p)
   "Select the first headline."
   (with-slots (visible-items)
       panel
     (when (plusp (length visible-items))
-      (let ((i (aref visible-items 0)))
-        (select-index panel i)))))
+      (navigate-to panel (aref visible-items 0) extend-p))))
 
 (defmethod output-panel-navigate-last ((panel output-panel) &optional extend-p)
   "Select the first headline that isn't marked as read (in reverse)."
@@ -401,8 +411,7 @@
       panel
     (let ((n (1- (length visible-items))))
       (when (>= n 0)
-        (let ((i (aref visible-items n)))
-          (select-index panel i))))))
+        (navigate-to panel (aref visible-items n) extend-p)))))
   
 (defmethod output-panel-selected-item-p ((panel output-panel) item)
   "T if the item is currently selected."
@@ -415,10 +424,15 @@
         ;; success if the items match
         when (funcall test item selected-item) return t))
 
-(defmethod output-panel-selected-item ((panel output-panel))
+(defmethod output-panel-focus-item ((panel output-panel))
   "Returns the most recently selected item and a boolean indicating whether there is one."
-  (when-let (selection (output-panel-selection panel))
-    (values (get-collection-item panel (first selection)) t)))
+  (when-let (i (output-panel-focus panel))
+    (values (get-collection-item panel i) t)))
+
+(defmethod output-panel-origin-item ((panel output-panel))
+  "Returns the most recently selected item and a boolean indicating whether there is one."
+  (when-let (i (output-panel-origin panel))
+    (values (get-collection-item panel i) t)))
 
 (defmethod output-panel-selected-items ((panel output-panel))
   "Return the list of selected items from the selection set."
@@ -510,6 +524,12 @@
     (when (or selected retracted)
       (when-let (callback (output-panel-selection-callback panel))
         (funcall callback panel))))
+
+  ;; clear the focus and origin items if no longer in the selection
+  (unless (find (output-panel-focus panel) indices)
+    (setf (output-panel-focus panel) nil))
+  (unless (find (output-panel-origin panel) indices)
+    (setf (output-panel-origin panel) nil))
 
   ;; redraw
   (gp:invalidate-rectangle panel))
