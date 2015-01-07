@@ -255,7 +255,7 @@
               ((> p y2) ; scroll down
                (set-vertical-scroll-parameters panel :slug-position (+ y1 (- p y2)))))))))
 
-(defmethod select-index ((panel output-panel) i &key adjoin (focus t) (origin t))
+(defmethod select-index ((panel output-panel) i &key adjoin force (focus t) (origin t))
   "Add or remove an item from the current selection set."
   (setf (output-panel-selection panel)
         (cond ((member (output-panel-interaction panel) '(:no-selection nil))
@@ -266,7 +266,7 @@
                (list i))
               
               ;; item already selected?
-              ((and adjoin (member i (output-panel-selection panel)))
+              ((and adjoin (null force) (member i (output-panel-selection panel)))
                (remove i (output-panel-selection panel)))
               
               ;; multiple or extended selection
@@ -322,12 +322,13 @@
 (defmethod handle-gesture ((panel output-panel) x y gspec)
   "Allow the instance to handle all gestures."
   (when t
-    (let ((shift-p (plusp (logand sys:gesture-spec-shift-bit (sys:gesture-spec-modifiers gspec)))))
+    (let ((shift-p (plusp (logand sys:gesture-spec-shift-bit (sys:gesture-spec-modifiers gspec))))
+          (join-p (plusp (logand sys:gesture-spec-control-bit (sys:gesture-spec-modifiers gspec)))))
       (case (sys:gesture-spec-data gspec)
-        (:up   (return-from handle-gesture (output-panel-navigate-previous panel shift-p)))
-        (:down (return-from handle-gesture (output-panel-navigate-next panel shift-p)))
-        (:home (return-from handle-gesture (output-panel-navigate-first panel shift-p)))
-        (:end  (return-from handle-gesture (output-panel-navigate-last panel shift-p))))))
+        (:up   (return-from handle-gesture (output-panel-navigate-previous panel :extend shift-p :adjoin join-p)))
+        (:down (return-from handle-gesture (output-panel-navigate-next panel :extend shift-p :adjoin join-p)))
+        (:home (return-from handle-gesture (output-panel-navigate-first panel :extend shift-p)))
+        (:end  (return-from handle-gesture (output-panel-navigate-last panel :extend shift-p))))))
 
   ;; allow the callback to handle the gesture
   (when-let (callback (output-panel-gesture-callback panel))
@@ -373,45 +374,49 @@
     (setf (output-panel-selection panel)
           (remove-if-not #'(lambda (i) (find i items)) (output-panel-selection panel)))))
 
-(defmethod navigate-to ((panel output-panel) i extend-p)
+(defmethod navigate-to ((panel output-panel) i extend adjoin)
   "Move the cursor to an index, optionally extending the selection (which doesn't advance the cursor)."
-  (if extend-p
-      (extend-index-selection panel i)
-    (select-index panel i)))
+  (cond (adjoin (select-index panel i :adjoin t :force t))
 
-(defmethod output-panel-navigate-next ((panel output-panel) &optional extend-p)
+        ;; extend the selection
+        (extend (extend-index-selection panel i))
+
+        ;; simple navigate
+        (t      (select-index panel i))))
+
+(defmethod output-panel-navigate-next ((panel output-panel) &key extend adjoin)
   "Move to the next item, optionally extending the selection."
   (with-slots (visible-items)
       panel
     (if-let (i (output-panel-focus panel))
         (let ((n (1+ (position i visible-items))))
           (when (< n (length visible-items))
-            (navigate-to panel (aref visible-items n) extend-p)))
-      (output-panel-navigate-first panel))))
+            (navigate-to panel (aref visible-items n) extend adjoin)))
+      (output-panel-navigate-first panel :extend extend))))
 
-(defmethod output-panel-navigate-previous ((panel output-panel) &optional extend-p)
+(defmethod output-panel-navigate-previous ((panel output-panel) &key extend adjoin)
   "Move to the previous item, optionally extending the selection."
   (with-slots (visible-items)
       panel
     (when-let (i (output-panel-focus panel))
       (let ((n (1- (position i visible-items))))
         (when (>= n 0)
-          (navigate-to panel (aref visible-items n) extend-p))))))
+          (navigate-to panel (aref visible-items n) extend adjoin))))))
 
-(defmethod output-panel-navigate-first ((panel output-panel) &optional extend-p)
+(defmethod output-panel-navigate-first ((panel output-panel) &key extend adjoin)
   "Select the first headline."
   (with-slots (visible-items)
       panel
     (when (plusp (length visible-items))
-      (navigate-to panel (aref visible-items 0) extend-p))))
+      (navigate-to panel (aref visible-items 0) extend adjoin))))
 
-(defmethod output-panel-navigate-last ((panel output-panel) &optional extend-p)
+(defmethod output-panel-navigate-last ((panel output-panel) &key extend adjoin)
   "Select the first headline that isn't marked as read (in reverse)."
   (with-slots (visible-items)
       panel
     (let ((n (1- (length visible-items))))
       (when (>= n 0)
-        (navigate-to panel (aref visible-items n) extend-p)))))
+        (navigate-to panel (aref visible-items n) extend adjoin)))))
   
 (defmethod output-panel-selected-item-p ((panel output-panel) item)
   "T if the item is currently selected."
