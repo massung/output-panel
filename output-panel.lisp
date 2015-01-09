@@ -347,7 +347,7 @@
 
   ;; allow the callback to handle the gesture
   (when-let (callback (output-panel-gesture-callback panel))
-    (funcall callback panel gspec)))
+    (funcall callback panel x y gspec)))
 
 (defmethod click-item ((panel output-panel) x y)
   "Select an item."
