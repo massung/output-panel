@@ -117,6 +117,15 @@
 
 (defmethod initialize-instance :after ((panel output-panel) &key)
   "Initialize the panel by getting the initial set of visible items."
+
+  ;; the selected items should be re-mapped to indices
+  (setf (slot-value panel 'selection)
+        (loop for item in (output-panel-selection panel)
+              for i = (search-for-item panel item)
+              when i
+              collect i))
+
+  ;; get the initial set of visible items
   (output-panel-update-filter panel))
 
 (defmethod apply-callback ((panel output-panel) callback-slot item &rest args)
@@ -151,7 +160,7 @@
 
 (defmethod display-output-panel ((panel output-panel) bx by bw bh)
   "Render all visible items in the panel."
-  (let* ((pos (get-vertical-scroll-parameters panel :slug-position))
+  (let* ((pos (or (get-vertical-scroll-parameters panel :slug-position) 0))
 
          ;; panel visible width and height
          (w (simple-pane-visible-width panel))
@@ -213,7 +222,7 @@
 (defmethod scroll-output-panel ((panel output-panel) direction op value &key interactive)
   "The user is scrolling, so update the scroll position and redraw."
   (when interactive
-    (let ((y (get-vertical-scroll-parameters panel :slug-position)))
+    (let ((y (or (get-vertical-scroll-parameters panel :slug-position) 0)))
       (case op
         (:move (set-vertical-scroll-parameters panel :slug-position value))
         (:drag (set-vertical-scroll-parameters panel :slug-position value))
@@ -243,7 +252,7 @@
   (with-slots (visible-items item-height)
       panel
     (when-let (pos (position i visible-items))
-      (let* ((y1 (get-vertical-scroll-parameters panel :slug-position))
+      (let* ((y1 (or (get-vertical-scroll-parameters panel :slug-position) 0))
 
              ;; bottom visible y
              (y2 (- (+ y1 (simple-pane-visible-height panel)) item-height))
@@ -257,6 +266,14 @@
 
 (defmethod select-index ((panel output-panel) i &key adjoin force (focus t) (origin t))
   "Add or remove an item from the current selection set."
+
+  ;; update the focus and origin - must be done before selection!
+  (when focus
+    (setf (output-panel-focus panel) i))
+  (when origin
+    (setf (output-panel-origin panel) i))
+
+  ;; now set the selection, which will fire callbacks
   (setf (output-panel-selection panel)
         (cond ((member (output-panel-interaction panel) '(:no-selection nil))
                ())
@@ -271,10 +288,6 @@
               
               ;; multiple or extended selection
               (t (adjoin i (output-panel-selection panel)))))
-
-  ;; update the focus and origin
-  (when focus (setf (output-panel-focus panel) i))
-  (when origin (setf (output-panel-origin panel) i))
 
   ;; make sure it's visible
   (ensure-index-visible panel i))
@@ -312,12 +325,14 @@
   (with-slots (paginate page items-per-page visible-items item-height)
       panel
     (with-geometry panel
-      (when (and (< 0 x %width%)
-                 (< 0 y %scroll-height%))
-        (let ((page-offset (if (null paginate)
-                               0
-                             (* page items-per-page))))
-          (aref visible-items (+ page-offset (truncate y item-height))))))))
+      (when (and (< 0 x (if (simple-pane-horizontal-scroll panel) %scroll-width% %width%))
+                 (< 0 y (if (simple-pane-vertical-scroll panel) %scroll-height% %height%)))
+        (let ((i (+ (if (null paginate)
+                        0
+                      (* page items-per-page))
+                    (truncate y item-height))))
+          (when (< i (length visible-items))
+            (aref visible-items i)))))))
 
 (defmethod handle-gesture ((panel output-panel) x y gspec)
   "Allow the instance to handle all gestures."
