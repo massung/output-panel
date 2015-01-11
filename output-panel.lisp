@@ -51,6 +51,7 @@
    #:output-panel-pages
    #:output-panel-items-per-page
    #:output-panel-empty-display-callback
+   #:output-panel-gesture-navigation-p
    #:output-panel-gesture-callback))
 
 (in-package :output-panel)
@@ -96,6 +97,7 @@
    (empty-display  :initform nil :initarg :empty-display-callback :accessor output-panel-empty-display-callback)
 
    ;; gestures use this callback and get the current item
+   (gesture-nav    :initform t   :initarg :gesture-navigation     :accessor output-panel-gesture-navigation-p)
    (gesture-cb     :initform nil :initarg :gesture-callback       :accessor output-panel-gesture-callback))
   (:default-initargs
    :draw-with-buffer t
@@ -336,7 +338,7 @@
 
 (defmethod handle-gesture ((panel output-panel) x y gspec)
   "Allow the instance to handle all gestures."
-  (when t
+  (when (output-panel-gesture-navigation-p panel)
     (let ((shift-p (plusp (logand sys:gesture-spec-shift-bit (sys:gesture-spec-modifiers gspec))))
           (join-p (plusp (logand sys:gesture-spec-control-bit (sys:gesture-spec-modifiers gspec)))))
       (case (sys:gesture-spec-data gspec)
