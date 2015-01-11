@@ -536,6 +536,12 @@
     (setf (slot-value panel 'selection)
           (loop for i in indices when (< -1 i (count-collection-items panel)) collect i))
 
+    ;; clear the focus and origin items if no longer in the selection
+    (unless (find (output-panel-focus panel) indices)
+      (setf (output-panel-focus panel) nil))
+    (unless (find (output-panel-origin panel) indices)
+      (setf (output-panel-origin panel) nil))
+
     ;; issue selected callbacks for newly selected items
     (loop for i in selected do (apply-callback panel 'item-selected (get-collection-item panel i)))
 
@@ -546,12 +552,6 @@
     (when (or selected retracted)
       (when-let (callback (output-panel-selection-callback panel))
         (funcall callback panel))))
-
-  ;; clear the focus and origin items if no longer in the selection
-  (unless (find (output-panel-focus panel) indices)
-    (setf (output-panel-focus panel) nil))
-  (unless (find (output-panel-origin panel) indices)
-    (setf (output-panel-origin panel) nil))
 
   ;; redraw
   (gp:invalidate-rectangle panel))
