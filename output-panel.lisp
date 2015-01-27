@@ -544,7 +544,7 @@
 
     ;; clear the focus and origin items if no longer in the selection
     (unless (find (output-panel-focus panel) indices)
-      (setf (output-panel-focus panel) nil))
+      (setf (output-panel-focus panel) (first indices)))
     (unless (find (output-panel-origin panel) indices)
       (setf (output-panel-origin panel) nil))
 
