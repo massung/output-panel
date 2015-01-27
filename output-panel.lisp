@@ -52,7 +52,8 @@
    #:output-panel-items-per-page
    #:output-panel-empty-display-callback
    #:output-panel-gesture-navigation-p
-   #:output-panel-gesture-callback))
+   #:output-panel-gesture-callback
+   #:output-panel-scroll-to-selection))
 
 (in-package :output-panel)
 
@@ -497,6 +498,11 @@
 
   ;; ensure that the currently selected items are visible
   (validate-selection panel))
+
+(defmethod output-panel-scroll-to-selection ((panel output-panel))
+  "If there is a selection, scroll to it or the focus item."
+  (when-let (i (first (output-panel-selection panel)))
+    (ensure-index-visible panel (or (output-panel-focus panel) i))))
 
 (defmethod (setf output-panel-item-height) :after (height (panel output-panel))
   "Redraw after changing the height of the items."
