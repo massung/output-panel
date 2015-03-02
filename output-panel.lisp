@@ -67,6 +67,8 @@
    (item-action    :initform nil :initarg :item-action-callback   :accessor output-panel-item-action-callback)
    (item-selected  :initform nil :initarg :item-selected-callback :accessor output-panel-item-select-callback)
    (item-retract   :initform nil :initarg :item-retract-callback  :accessor output-panel-item-retract-callback)
+   (item-click     :initform nil :initarg :item-click-callback    :accessor output-panel-item-click-callback)
+   (item-motion    :initform nil :initarg :item-motion-callback   :accessor output-panel-item-motion-callback)
 
    ;; selected item settings
    (selected-bg    :initform nil :initarg :selected-background    :accessor output-panel-selected-background)
@@ -116,6 +118,7 @@
                   ((:button-1 :second-press) double-click-item)
                   ((:button-1 :press :shift) shift-click-item)
                   ((:button-1 :press #+cocoa :hyper #+mswindows :control) hyper-click-item)
+                  (:motion motion-item)
                   ;((:motion :button-1 :press) drag-item)
                   (:post-menu post-menu-item))))
 
@@ -353,10 +356,22 @@
   (when-let (callback (output-panel-gesture-callback panel))
     (funcall callback panel x y gspec)))
 
+(defmethod motion-item ((panel output-panel) x y)
+  "Callback for mouse motion within an item."
+  (when-let (i (index-at-position panel x y))
+    (let ((y (rem y (output-panel-item-height panel))))
+      (apply-callback panel 'item-motion (get-collection-item panel i) x y))))
+
 (defmethod click-item ((panel output-panel) x y)
   "Select an item."
   (when-let (i (index-at-position panel x y))
-    (select-index panel i)))
+
+    ;; select the item before calling the click callback
+    (select-index panel i)
+
+    ;; call the click callback with the item, x, and y position (within the item)
+    (let ((y (rem y (output-panel-item-height panel))))
+      (apply-callback panel 'item-click (get-collection-item panel i) x y))))
 
 (defmethod double-click-item ((panel output-panel) x y)
   "Select and perform an action on a given item."
